@@ -3,15 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tablica Siatkówka OFFLINE</title>
+<title>Siatkówka - sterowanie głosem</title>
 
 <style>
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
+    font-family: Arial;
     background: black;
     color: white;
-    user-select: none;
 }
 
 .header {
@@ -34,13 +33,8 @@ body {
     align-items: center;
 }
 
-.left {
-    background: #1e40af;
-}
-
-.right {
-    background: #991b1b;
-}
+.left { background: #1e40af; }
+.right { background: #991b1b; }
 
 .name {
     font-size: 40px;
@@ -51,37 +45,30 @@ body {
     font-weight: bold;
 }
 
-.buttons {
+.controls {
     display: flex;
     justify-content: center;
     gap: 10px;
-    padding: 15px;
+    padding: 10px;
     background: #111;
 }
 
 button {
-    font-size: 22px;
-    padding: 15px 20px;
+    font-size: 20px;
+    padding: 10px 20px;
     border: none;
     border-radius: 10px;
 }
 
-.add {
-    background: #16a34a;
-    color: white;
-}
+.add { background: green; color: white; }
+.undo { background: red; color: white; }
 
-.undo {
-    background: #dc2626;
-    color: white;
-}
-
-.full {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    font-size: 12px;
-    padding: 5px 10px;
+.status {
+    text-align: center;
+    padding: 5px;
+    font-size: 14px;
+    background: #000;
+    color: #0f0;
 }
 </style>
 </head>
@@ -89,10 +76,12 @@ button {
 <body>
 
 <div class="header">
-Kliknij ekran → FULLSCREEN | Sterowanie: A = lewa, L = prawa, Z = cofnij
+GŁOS: powiedz "punkt" → "dla nas" / "wasz"
 </div>
 
-<div class="board" onclick="goFullScreen()">
+<div class="status" id="status">Nasłuchiwanie wyłączone</div>
+
+<div class="board">
 
     <div class="team left">
         <div class="name">LEWA</div>
@@ -106,76 +95,50 @@ Kliknij ekran → FULLSCREEN | Sterowanie: A = lewa, L = prawa, Z = cofnij
 
 </div>
 
-<div class="buttons">
+<div class="controls">
     <button class="add" onclick="add('l')">+ LEWA</button>
     <button class="undo" onclick="undo()">COFNIJ</button>
     <button class="add" onclick="add('r')">+ PRAWA</button>
 </div>
 
-<button class="full" onclick="goFullScreen()">FULL</button>
-
 <script>
 let left = 0;
 let right = 0;
 let history = [];
-let setShown = false;
+let armed = false;
 
-// FULLSCREEN
-function goFullScreen() {
-    if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen();
-    }
-}
+const leftEl = document.getElementById("left");
+const rightEl = document.getElementById("right");
+const statusEl = document.getElementById("status");
 
-// DŹWIĘK PIK
+// dźwięk
 function beep() {
-    try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        osc.connect(ctx.destination);
-        osc.frequency.value = 900;
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
-    } catch (e) {}
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    o.connect(ctx.destination);
+    o.frequency.value = 900;
+    o.start();
+    o.stop(ctx.currentTime + 0.1);
 }
 
-// GŁOS
-function speak(text) {
-    try {
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = "pl-PL";
-        speechSynthesis.speak(msg);
-    } catch (e) {}
-}
-
-// UPDATE
+// update
 function update() {
-    document.getElementById("left").innerText = left;
-    document.getElementById("right").innerText = right;
-
-    // piłka setowa
-    if ((left === 24 || right === 24) && !setShown) {
-        speak("Piłka setowa");
-        setShown = true;
-    }
-
-    if (left < 24 && right < 24) {
-        setShown = false;
-    }
+    leftEl.textContent = left;
+    rightEl.textContent = right;
 }
 
-// DODAJ
+// dodaj punkt
 function add(team) {
-    history.push({left, right});
+    history.push({ left, right });
 
-    if (team === 'l') left++;
-    if (team === 'r') right++;
+    if (team === "l") left++;
+    if (team === "r") right++;
 
     beep();
     update();
 }
 
-// COFNIJ
+// cofnięcie
 function undo() {
     if (history.length > 0) {
         const last = history.pop();
@@ -186,14 +149,51 @@ function undo() {
     }
 }
 
-// KLAWIATURA (PC + telefon z klawiaturą)
-document.addEventListener("keydown", (e) => {
-    if (e.key === "a") add('l');
-    if (e.key === "l") add('r');
-    if (e.key === "z") undo();
-});
+// ===== MIKROFON =====
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-// start
+if (!SpeechRecognition) {
+    alert("Brak obsługi mikrofonu w tej przeglądarce");
+} else {
+
+    const rec = new SpeechRecognition();
+    rec.lang = "pl-PL";
+    rec.continuous = true;
+    rec.interimResults = false;
+
+    rec.onstart = () => {
+        statusEl.innerText = "Nasłuchiwanie aktywne";
+    };
+
+    rec.onresult = (e) => {
+        const text = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
+
+        console.log("usłyszano:", text);
+
+        // 1. aktywacja
+        if (text.includes("punkt")) {
+            armed = true;
+            return;
+        }
+
+        if (!armed) return;
+
+        // 2. komendy
+        if (text.includes("dla nas")) {
+            add("l");
+            armed = false;
+        }
+
+        if (text.includes("wasz")) {
+            add("r");
+            armed = false;
+        }
+    };
+
+    rec.onend = () => rec.start();
+    rec.start();
+}
+
 update();
 </script>
 
