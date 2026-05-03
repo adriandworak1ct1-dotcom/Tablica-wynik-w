@@ -1,13 +1,201 @@
-🏐 Tablica wyników siatkówki body { margin: 0; font-family: Arial, sans-serif; background: black; color: white; overflow: hidden; } .status { text-align: center; padding: 10px; font-size: 18px; background: #111; } .scoreboard { display: flex; height: calc(100vh - 140px); } .team { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; } .left { background: #1e40af; } .right { background: #991b1b; } .label { font-size: 40px; } .score { font-size: 180px; font-weight: bold; } .controls { display: flex; justify-content: space-around; padding: 15px; background: #111; } button { font-size: 26px; padding: 15px 25px; border: none; border-radius: 10px; cursor: pointer; } .add { background: #16a34a; color: white; } .undo { background: #dc2626; color: white; } 
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tablica Siatkówka OFFLINE</title>
 
-Kliknij ekran i powiedz "start" 
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: black;
+    color: white;
+    user-select: none;
+}
 
-LEWA
+.header {
+    text-align: center;
+    padding: 10px;
+    background: #111;
+    font-size: 18px;
+}
 
-0
+.board {
+    display: flex;
+    height: 75vh;
+}
 
-<div class="team right"> <div class="label">PRAWA</div> <div class="score" id="rightScore">0</div> </div> 
+.team {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
 
-+ Lewa Cofnij + Prawa 
+.left {
+    background: #1e40af;
+}
 
-let left = 0; let right = 0; let history = []; let active = false; let setPointAnnounced = false; const leftEl = document.getElementById("leftScore"); const rightEl = document.getElementById("rightScore"); const statusEl = document.getElementById("status"); // FULLSCREEN function goFullscreen() { if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); } } // DŹWIĘK const audioCtx = new (window.AudioContext || window.webkitAudioContext)(); function beep() { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.connect(gain); gain.connect(audioCtx.destination); osc.frequency.value = 900; osc.start(); gain.gain.setValueAtTime(1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15); osc.stop(audioCtx.currentTime + 0.15); } // MOWA (synteza) function speak(text) { const msg = new SpeechSynthesisUtterance(text); msg.lang = "pl-PL"; speechSynthesis.speak(msg); } // UPDATE function update() { leftEl.textContent = left; rightEl.textContent = right; if ((left === 24 || right === 24) && !setPointAnnounced) { speak("Piłka setowa"); setPointAnnounced = true; } if (left < 24 && right < 24) { setPointAnnounced = false; } } // DODAWANIE function addPoint(team) { history.push({ left, right }); if (team === "left") left++; if (team === "right") right++; beep(); update(); } // COFANIE function undo() { if (history.length > 0) { const last = history.pop(); left = last.left; right = last.right; beep(); update(); } } // ROZPOZNAWANIE MOWY const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition; if (SpeechRecognition) { const recognition = new SpeechRecognition(); recognition.lang = "pl-PL"; recognition.continuous = true; recognition.onresult = (event) => { const text = event.results[event.results.length - 1][0].transcript.toLowerCase(); if (text.includes("start")) { active = true; statusEl.textContent = "Nasłuchiwanie aktywne"; return; } if (!active) return; if (text.includes("lewa")) addPoint("left"); else if (text.includes("prawa")) addPoint("right"); else if (text.includes("cofnij")) undo(); }; recognition.onend = () => recognition.start(); recognition.start(); } else { statusEl.textContent = "Brak obsługi rozpoznawania mowy"; } 
+.right {
+    background: #991b1b;
+}
+
+.name {
+    font-size: 40px;
+}
+
+.score {
+    font-size: 200px;
+    font-weight: bold;
+}
+
+.buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px;
+    background: #111;
+}
+
+button {
+    font-size: 22px;
+    padding: 15px 20px;
+    border: none;
+    border-radius: 10px;
+}
+
+.add {
+    background: #16a34a;
+    color: white;
+}
+
+.undo {
+    background: #dc2626;
+    color: white;
+}
+
+.full {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    font-size: 12px;
+    padding: 5px 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+Kliknij ekran → FULLSCREEN | Sterowanie: A = lewa, L = prawa, Z = cofnij
+</div>
+
+<div class="board" onclick="goFullScreen()">
+
+    <div class="team left">
+        <div class="name">LEWA</div>
+        <div class="score" id="left">0</div>
+    </div>
+
+    <div class="team right">
+        <div class="name">PRAWA</div>
+        <div class="score" id="right">0</div>
+    </div>
+
+</div>
+
+<div class="buttons">
+    <button class="add" onclick="add('l')">+ LEWA</button>
+    <button class="undo" onclick="undo()">COFNIJ</button>
+    <button class="add" onclick="add('r')">+ PRAWA</button>
+</div>
+
+<button class="full" onclick="goFullScreen()">FULL</button>
+
+<script>
+let left = 0;
+let right = 0;
+let history = [];
+let setShown = false;
+
+// FULLSCREEN
+function goFullScreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+    }
+}
+
+// DŹWIĘK PIK
+function beep() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.connect(ctx.destination);
+        osc.frequency.value = 900;
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+    } catch (e) {}
+}
+
+// GŁOS
+function speak(text) {
+    try {
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = "pl-PL";
+        speechSynthesis.speak(msg);
+    } catch (e) {}
+}
+
+// UPDATE
+function update() {
+    document.getElementById("left").innerText = left;
+    document.getElementById("right").innerText = right;
+
+    // piłka setowa
+    if ((left === 24 || right === 24) && !setShown) {
+        speak("Piłka setowa");
+        setShown = true;
+    }
+
+    if (left < 24 && right < 24) {
+        setShown = false;
+    }
+}
+
+// DODAJ
+function add(team) {
+    history.push({left, right});
+
+    if (team === 'l') left++;
+    if (team === 'r') right++;
+
+    beep();
+    update();
+}
+
+// COFNIJ
+function undo() {
+    if (history.length > 0) {
+        const last = history.pop();
+        left = last.left;
+        right = last.right;
+        beep();
+        update();
+    }
+}
+
+// KLAWIATURA (PC + telefon z klawiaturą)
+document.addEventListener("keydown", (e) => {
+    if (e.key === "a") add('l');
+    if (e.key === "l") add('r');
+    if (e.key === "z") undo();
+});
+
+// start
+update();
+</script>
+
+</body>
+</html>
