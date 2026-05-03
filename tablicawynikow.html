@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Siatkówka - sterowanie głosem</title>
+<title>Siatkówka PRO MAX</title>
 
 <style>
 body {
@@ -11,18 +11,19 @@ body {
     font-family: Arial;
     background: black;
     color: white;
+    user-select: none;
 }
 
-.header {
+.top {
     text-align: center;
     padding: 10px;
     background: #111;
-    font-size: 18px;
+    font-size: 16px;
 }
 
 .board {
     display: flex;
-    height: 75vh;
+    height: 80vh;
 }
 
 .team {
@@ -31,6 +32,7 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    cursor: pointer;
 }
 
 .left { background: #1e40af; }
@@ -38,11 +40,18 @@ body {
 
 .name {
     font-size: 40px;
+    margin-bottom: 10px;
 }
 
 .score {
-    font-size: 200px;
     font-weight: bold;
+    line-height: 1;
+    transition: font-size 0.2s ease;
+}
+
+.sets {
+    font-size: 40px;
+    margin-top: 10px;
 }
 
 .controls {
@@ -54,147 +63,199 @@ body {
 }
 
 button {
-    font-size: 20px;
-    padding: 10px 20px;
+    font-size: 16px;
+    padding: 10px 14px;
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
+    cursor: pointer;
 }
 
-.add { background: green; color: white; }
-.undo { background: red; color: white; }
+.small {
+    background: #444;
+    color: white;
+}
 
-.status {
-    text-align: center;
-    padding: 5px;
-    font-size: 14px;
-    background: #000;
-    color: #0f0;
+.full {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    font-size: 12px;
 }
 </style>
 </head>
 
 <body>
 
-<div class="header">
-GŁOS: powiedz "punkt" → "dla nas" / "wasz"
+<div class="top">
+🏐 PRO MAX — kliknij wynik aby dodać punkt
 </div>
 
-<div class="status" id="status">Nasłuchiwanie wyłączone</div>
+<div class="board" id="board">
 
-<div class="board">
-
-    <div class="team left">
+    <div class="team left" onclick="add('l')">
         <div class="name">LEWA</div>
-        <div class="score" id="left">0</div>
+        <div class="score" id="l">0</div>
+        <div class="sets">SETY: <span id="ls">0</span></div>
     </div>
 
-    <div class="team right">
+    <div class="team right" onclick="add('r')">
         <div class="name">PRAWA</div>
-        <div class="score" id="right">0</div>
+        <div class="score" id="r">0</div>
+        <div class="sets">SETY: <span id="rs">0</span></div>
     </div>
 
 </div>
 
 <div class="controls">
-    <button class="add" onclick="add('l')">+ LEWA</button>
-    <button class="undo" onclick="undo()">COFNIJ</button>
-    <button class="add" onclick="add('r')">+ PRAWA</button>
+    <button class="small" onclick="undo()">COFNIJ</button>
+    <button class="small" onclick="resetMatch()">RESET</button>
 </div>
 
+<button class="full" onclick="goFull()">FULL</button>
+
 <script>
-let left = 0;
-let right = 0;
+
+// =====================
+// STAN GRY
+// =====================
+let l = 0;
+let r = 0;
+let ls = 0;
+let rs = 0;
+
 let history = [];
-let armed = false;
 
-const leftEl = document.getElementById("left");
-const rightEl = document.getElementById("right");
-const statusEl = document.getElementById("status");
+const SET_TO = 25;
 
-// dźwięk
+// =====================
+// AUDIO (NAPRAWIONE)
+// =====================
+let audioCtx = null;
+
 function beep() {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = ctx.createOscillator();
-    o.connect(ctx.destination);
-    o.frequency.value = 900;
-    o.start();
-    o.stop(ctx.currentTime + 0.1);
+    try {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.frequency.value = 850;
+        gain.gain.value = 0.07;
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+
+    } catch (e) {
+        // brak crasha
+    }
 }
 
-// update
+// =====================
+// FULLSCREEN
+// =====================
+function goFull() {
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen();
+}
+
+// auto fullscreen po pierwszym kliknięciu
+document.getElementById("board").addEventListener("click", goFull, { once: true });
+
+// =====================
+// SKALOWANIE LICZB
+// =====================
+function fitScores() {
+
+    const lEl = document.getElementById("l");
+    const rEl = document.getElementById("r");
+
+    const base = 220;
+
+    lEl.style.fontSize = Math.max(80, base - l.toString().length * 35) + "px";
+    rEl.style.fontSize = Math.max(80, base - r.toString().length * 35) + "px";
+}
+
+// =====================
+// UPDATE
+// =====================
 function update() {
-    leftEl.textContent = left;
-    rightEl.textContent = right;
+    document.getElementById("l").innerText = l;
+    document.getElementById("r").innerText = r;
+    document.getElementById("ls").innerText = ls;
+    document.getElementById("rs").innerText = rs;
+
+    fitScores();
 }
 
-// dodaj punkt
-function add(team) {
-    history.push({ left, right });
+// =====================
+// NOWY SET
+// =====================
+function newSet(winner) {
 
-    if (team === "l") left++;
-    if (team === "r") right++;
+    if (winner === 'l') ls++;
+    if (winner === 'r') rs++;
+
+    l = 0;
+    r = 0;
 
     beep();
+
     update();
 }
 
-// cofnięcie
+// =====================
+// PUNKT
+// =====================
+function add(team) {
+
+    history.push({l, r, ls, rs});
+
+    if (team === 'l') l++;
+    if (team === 'r') r++;
+
+    beep();
+
+    if (l >= SET_TO && l - r >= 2) newSet('l');
+    if (r >= SET_TO && r - l >= 2) newSet('r');
+
+    update();
+}
+
+// =====================
+// COFNIJ
+// =====================
 function undo() {
     if (history.length > 0) {
         const last = history.pop();
-        left = last.left;
-        right = last.right;
+        l = last.l;
+        r = last.r;
+        ls = last.ls;
+        rs = last.rs;
         beep();
         update();
     }
 }
 
-// ===== MIKROFON =====
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-if (!SpeechRecognition) {
-    alert("Brak obsługi mikrofonu w tej przeglądarce");
-} else {
-
-    const rec = new SpeechRecognition();
-    rec.lang = "pl-PL";
-    rec.continuous = true;
-    rec.interimResults = false;
-
-    rec.onstart = () => {
-        statusEl.innerText = "Nasłuchiwanie aktywne";
-    };
-
-    rec.onresult = (e) => {
-        const text = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
-
-        console.log("usłyszano:", text);
-
-        // 1. aktywacja
-        if (text.includes("punkt")) {
-            armed = true;
-            return;
-        }
-
-        if (!armed) return;
-
-        // 2. komendy
-        if (text.includes("dla nas")) {
-            add("l");
-            armed = false;
-        }
-
-        if (text.includes("wasz")) {
-            add("r");
-            armed = false;
-        }
-    };
-
-    rec.onend = () => rec.start();
-    rec.start();
+// =====================
+// RESET
+// =====================
+function resetMatch() {
+    l = 0;
+    r = 0;
+    ls = 0;
+    rs = 0;
+    history = [];
+    update();
 }
 
+// start
 update();
+
 </script>
 
 </body>
